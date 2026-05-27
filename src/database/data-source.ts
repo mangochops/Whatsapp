@@ -2,6 +2,7 @@ import { DataSource } from 'typeorm';
 import { config } from 'dotenv';
 
 // Load environment variables
+// eslint-disable-next-line @typescript-eslint/no-unsafe-call
 config();
 
 const dbType = process.env.DATABASE_TYPE || 'sqlite';
