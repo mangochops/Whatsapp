@@ -31,6 +31,25 @@ export class SessionController {
     };
   }
 
+  @Post(':id/onboarding/start')
+  @RequireRole(ApiKeyRole.OPERATOR)
+  @ApiOperation({ summary: 'Start onboarding flow for a specific chat' })
+  @ApiParam({ name: 'id', description: 'Session ID' })
+  @ApiResponse({ status: 201, description: 'Onboarding started' })
+  async startOnboarding(@Param('id') id: string, @Body('chatId') chatId: string): Promise<void> {
+    // Ensure the session exists before starting onboarding
+    await this.sessionService.findOne(id);
+    await this.sessionService.startOnboarding(chatId);
+
+    await this.auditService.logInfo(AuditAction.SESSION_STARTED, {
+      sessionId: id,
+      metadata: {
+        chatId: chatId,
+        action: 'onboarding_started',
+      },
+    });
+  }
+
   @Post()
   @RequireRole(ApiKeyRole.OPERATOR)
   @ApiOperation({ summary: 'Create a new WhatsApp session' })

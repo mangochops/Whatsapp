@@ -9,6 +9,7 @@ import {
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, In, DataSource } from 'typeorm';
 import { Session, SessionStatus } from './entities/session.entity';
+import { UserOnboarding } from './entities/user-onboarding.entity';
 import { CreateSessionDto } from './dto';
 import { EngineFactory } from '../../engine/engine.factory';
 import { IWhatsAppEngine, EngineStatus } from '../../engine/interfaces/whatsapp-engine.interface';
@@ -37,6 +38,8 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
   constructor(
     @InjectRepository(Session, 'data')
     private readonly sessionRepository: Repository<Session>,
+    @InjectRepository(UserOnboarding, 'data')
+    private readonly onboardingRepository: Repository<UserOnboarding>,
     @InjectDataSource('data')
     private readonly dataSource: DataSource,
     private readonly engineFactory: EngineFactory,
@@ -283,33 +286,35 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
         });
       },
       onMessage: (message): void => {
+        void (async () => {
+          const isHandledByOnboarding = await this.handleIncomingMessage(message.from, message.body || '');
+          if (isHandledByOnboarding) return;
+          // ... rest of your logic
+        })();
+
         this.logger.debug(`Message received from ${message.from}`, {
           sessionId: id,
           messageId: message.id,
           from: message.from,
           action: 'message_received',
         });
+
         // Update last active timestamp
         void this.sessionRepository.update(id, { lastActiveAt: new Date() });
-        // Convert IncomingMessage to plain object for dispatch
+        // 3. Convert IncomingMessage to plain object for standard dispatch
         const messageData = { ...message };
 
-        // Execute hook for message received - plugins can modify or stop processing
+        // Execute hook for message received
         void this.hookManager
           .execute('message:received', messageData, {
             sessionId: id,
             source: 'Engine',
           })
           .then(({ continue: shouldContinue, data: finalMessage }) => {
-            if (!shouldContinue) {
-              // Plugin stopped processing (e.g., auto-reply handled it)
-              return;
-            }
+            if (!shouldContinue) return;
 
-            // Dispatch to webhooks with potentially modified message
-            void this.webhookService.dispatch(id, 'message.received', finalMessage as Record<string, unknown>);
-            // Emit real-time event to WebSocket clients
-            this.eventsGateway.emitMessage(id, finalMessage as Record<string, unknown>);
+            void this.webhookService.dispatch(id, 'message.received', finalMessage);
+            this.eventsGateway.emitMessage(id, finalMessage);
           });
       },
       onDisconnected: (reason: string): void => {
@@ -536,5 +541,36 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
    */
   isActive(id: string): boolean {
     return this.engines.has(id);
+  }
+  async startOnboarding(chatId: string): Promise<UserOnboarding> {
+    const onboarding = this.onboardingRepository.create({
+      chatId,
+      state: 'AWAITING_NAME',
+      data: {},
+    });
+    return await this.onboardingRepository.save(onboarding);
+  }
+  async handleIncomingMessage(chatId: string, messageText: string): Promise<boolean> {
+    // 1. Fetch current onboarding state
+    const onboarding = await this.onboardingRepository.findOne({ where: { chatId } });
+    if (!onboarding) return false;
+
+    // 2. State machine logic
+    switch (onboarding.state) {
+      case 'AWAITING_NAME':
+        onboarding.data.name = messageText;
+        onboarding.state = 'AWAITING_INDUSTRY';
+        break;
+      case 'AWAITING_INDUSTRY':
+        onboarding.data.industry = messageText;
+        onboarding.state = 'IDLE'; // Finalize
+        break;
+      default:
+        return false;
+    }
+
+    // 3. Persist state
+    await this.onboardingRepository.save(onboarding);
+    return true;
   }
 }

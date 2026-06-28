@@ -26,6 +26,7 @@ import { CatalogModule } from './modules/catalog/catalog.module';
 import { HooksModule } from './core/hooks';
 import { PluginsModule } from './core/plugins';
 import { PluginsApiModule } from './modules/plugins/plugins.module';
+import { UserOnboarding } from './modules/session/entities/user-onboarding.entity';
 
 // Only import QueueModule if explicitly enabled to avoid Redis connection errors
 const queueModules: Array<Type | DynamicModule> = [];
@@ -68,6 +69,7 @@ if (process.env.QUEUE_ENABLED === 'true') {
         const dbType = configService.get<'sqlite' | 'postgres'>('dataDatabase.type', 'sqlite');
         const baseConfig = {
           entities: [
+            UserOnboarding,
             __dirname + '/modules/session/**/*.entity{.ts,.js}',
             __dirname + '/modules/webhook/**/*.entity{.ts,.js}',
             __dirname + '/modules/message/**/*.entity{.ts,.js}',

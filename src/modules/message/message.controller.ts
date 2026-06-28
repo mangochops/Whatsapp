@@ -6,6 +6,8 @@ import { SendTextMessageDto, SendMediaMessageDto, MessageResponseDto } from './d
 import { SendBulkMessageDto, BulkMessageResponseDto } from './dto/bulk-message.dto';
 import { RequireRole } from '../auth/decorators/auth.decorators';
 import { ApiKeyRole } from '../auth/entities/api-key.entity';
+import * as fs from 'fs';
+import * as handlebars from 'handlebars';
 
 @ApiTags('messages')
 @Controller('sessions/:sessionId/messages')
@@ -14,6 +16,33 @@ export class MessageController {
     private readonly messageService: MessageService,
     private readonly bulkMessageService: BulkMessageService,
   ) {}
+
+  // Add this method to your MessageController class
+  @Post('send-template')
+  @RequireRole(ApiKeyRole.OPERATOR)
+  @ApiOperation({ summary: 'Send a template message using Handlebars' })
+  @ApiParam({ name: 'sessionId', description: 'Session ID' })
+  @ApiResponse({
+    status: 201,
+    description: 'Template message sent',
+    type: MessageResponseDto,
+  })
+  async sendTemplate(
+    @Param('sessionId') sessionId: string,
+    @Body() dto: { chatId: string; templateName: string; variables: Record<string, any> },
+  ): Promise<MessageResponseDto> {
+    // 1. Load and compile template
+    const source = fs.readFileSync(`./templates/${dto.templateName}.hbs`, 'utf8');
+    const template = handlebars.compile(source);
+
+    // 2. Generate final text
+    const text = template(dto.variables);
+
+    return this.messageService.sendText(sessionId, {
+      chatId: dto.chatId,
+      text: text,
+    });
+  }
 
   @Get()
   @ApiOperation({ summary: 'Get message history for a session' })
