@@ -53,7 +53,7 @@ if (process.env.QUEUE_ENABLED === 'true') {
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         type: 'sqlite' as const,
-        database: configService.get<string>('database.database', './data/main.sqlite'),
+        database: configService.get<string>('database.database', './data/openwa.sqlite'),
         entities: [__dirname + '/modules/auth/**/*.entity{.ts,.js}', __dirname + '/modules/audit/**/*.entity{.ts,.js}'],
         synchronize: true,
         logging: configService.get<boolean>('database.logging', false),

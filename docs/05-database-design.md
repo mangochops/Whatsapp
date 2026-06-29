@@ -52,7 +52,7 @@ OpenWA v0.2+ implements a **dual-database architecture** that separates boot con
 
 | Component   | Database             | Location             | Purpose                                    |
 | ----------- | -------------------- | -------------------- | ------------------------------------------ |
-| **Main DB** | SQLite (always)      | `./data/main.sqlite` | Boot-critical config, API keys, audit logs |
+| **Main DB** | SQLite (always)      | `./data/openwa.sqlite` | Boot-critical config, API keys, audit logs |
 | **Data DB** | SQLite or PostgreSQL | Configurable         | User data, sessions, messages, webhooks    |
 
 > [!IMPORTANT]

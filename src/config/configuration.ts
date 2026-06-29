@@ -21,7 +21,7 @@ export default () => ({
   // Main Database configuration (always SQLite for boot config)
   database: {
     type: 'sqlite' as const,
-    database: './data/main.sqlite',
+    database: './data/openwa.sqlite',
     synchronize: true,
     logging: process.env.DATABASE_LOGGING === 'true',
   },
