@@ -31,6 +31,14 @@ export class SessionController {
     };
   }
 
+  @Post(':id/sendReply')
+  @RequireRole(ApiKeyRole.OPERATOR)
+  @ApiOperation({ summary: 'Send reply using the service' })
+  @ApiParam({ name: 'id', description: 'Session ID' })
+  async sendReply(@Body() dto: { to: string; body: string }) {
+    return this.sessionService.sendReply(dto.to, dto.body);
+  }
+
   @Post(':id/onboarding/start')
   @RequireRole(ApiKeyRole.OPERATOR)
   @ApiOperation({ summary: 'Start onboarding flow for a specific chat' })

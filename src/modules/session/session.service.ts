@@ -17,12 +17,22 @@ import { createLogger } from '../../common/services/logger.service';
 import { EventsGateway } from '../events/events.gateway';
 import { WebhookService } from '../webhook/webhook.service';
 import { HookManager } from '../../core/hooks';
+import * as handlebars from 'handlebars';
+import * as fs from 'fs';
+import * as path from 'path';
 
 interface ReconnectState {
   attempts: number;
   timer: NodeJS.Timeout | null;
   maxAttempts: number;
   baseDelay: number;
+}
+
+interface OnboardingData {
+  businessName?: string;
+  industry?: string;
+  workingHours?: string;
+  [key: string]: string | undefined;
 }
 
 @Injectable()
@@ -546,31 +556,108 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
     const onboarding = this.onboardingRepository.create({
       chatId,
       state: 'AWAITING_NAME',
-      data: {},
+      data: {} as OnboardingData,
     });
     return await this.onboardingRepository.save(onboarding);
   }
   async handleIncomingMessage(chatId: string, messageText: string): Promise<boolean> {
-    // 1. Fetch current onboarding state
-    const onboarding = await this.onboardingRepository.findOne({ where: { chatId } });
-    if (!onboarding) return false;
+    const text = messageText.trim();
 
-    // 2. State machine logic
-    switch (onboarding.state) {
-      case 'AWAITING_NAME':
-        onboarding.data.name = messageText;
-        onboarding.state = 'AWAITING_INDUSTRY';
-        break;
-      case 'AWAITING_INDUSTRY':
-        onboarding.data.industry = messageText;
-        onboarding.state = 'IDLE'; // Finalize
-        break;
-      default:
-        return false;
+    let onboarding = await this.onboardingRepository.findOne({ where: { chatId } });
+
+    if (!onboarding) {
+      onboarding = this.onboardingRepository.create({
+        chatId,
+        state: 'AWAITING_BUSINESS_NAME',
+        data: {} as OnboardingData,
+      });
+      await this.onboardingRepository.save(onboarding);
     }
 
-    // 3. Persist state
+    let templateName: string;
+    let context: OnboardingData;
+
+    switch (onboarding.state) {
+      case 'AWAITING_BUSINESS_NAME':
+        (onboarding.data as OnboardingData).businessName = text;
+        templateName = 'onboarding_industry';
+        context = { business_name: text };
+        onboarding.state = 'AWAITING_BUSINESS_INDUSTRY';
+        break;
+
+      case 'AWAITING_BUSINESS_INDUSTRY':
+        (onboarding.data as OnboardingData).industry = text;
+        templateName = 'onboarding_hours';
+        context = { industry: text };
+        onboarding.state = 'AWAITING_WORKING_HOURS';
+        break;
+
+      case 'AWAITING_WORKING_HOURS':
+        (onboarding.data as OnboardingData).workingHours = text;
+        templateName = 'onboarding_summary';
+        context = {
+          business_name: (onboarding.data as OnboardingData).businessName,
+          industry: (onboarding.data as OnboardingData).industry,
+          working_hours: text,
+        };
+        onboarding.state = 'IDLE';
+        break;
+
+      case 'IDLE':
+      default:
+        templateName = 'introduction'; // or a default message
+        context = onboarding.data as OnboardingData;
+        break;
+    }
+
     await this.onboardingRepository.save(onboarding);
+
+    if (templateName) {
+      try {
+        const templatePath = path.join(process.cwd(), 'templates', `${templateName}.hbs`);
+        const templateContent = fs.readFileSync(templatePath, 'utf8');
+        const compiled = handlebars.compile(templateContent);
+        const reply = compiled(context);
+        await this.sendReply(chatId, reply);
+      } catch (error) {
+        this.logger.error(
+          `Failed to render template ${templateName}`,
+          error instanceof Error ? error.message : String(error),
+        );
+        await this.sendReply(chatId, `Something went wrong. Please try again.`);
+      }
+    }
+
     return true;
+  }
+
+  async sendReply(to: string, body: string): Promise<void> {
+    try {
+      const session = await this.sessionRepository.findOne({
+        where: { status: SessionStatus.READY },
+        order: { createdAt: 'DESC' },
+      });
+
+      if (!session) {
+        this.logger.error('No active session found');
+        return;
+      }
+
+      this.logger.log(`Attempting to send reply to ${to} via session ${session.id}`);
+
+      const response = await fetch(`http://localhost:2785/api/sessions/${session.id}/sendText`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to, body }),
+      });
+
+      if (!response.ok) {
+        this.logger.error(`Send failed with status ${response.status}`);
+      } else {
+        this.logger.log('Reply sent successfully');
+      }
+    } catch (error) {
+      this.logger.error('Failed to send reply', error instanceof Error ? error.message : String(error));
+    }
   }
 }

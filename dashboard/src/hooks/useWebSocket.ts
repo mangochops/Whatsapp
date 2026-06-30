@@ -45,6 +45,7 @@ export function useWebSocket(events: WebSocketEvents = {}) {
     }
 
     socketRef.current = io(`${SOCKET_URL}/events`, {
+      path: '/socket.io',
       autoConnect: true,
       reconnection: true,
       reconnectionAttempts: 5,

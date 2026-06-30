@@ -27,6 +27,7 @@ import { HooksModule } from './core/hooks';
 import { PluginsModule } from './core/plugins';
 import { PluginsApiModule } from './modules/plugins/plugins.module';
 import { UserOnboarding } from './modules/session/entities/user-onboarding.entity';
+import { WebhookReceiverModule } from './modules/webhook-receiver/webhook-receiver.module';
 
 // Only import QueueModule if explicitly enabled to avoid Redis connection errors
 const queueModules: Array<Type | DynamicModule> = [];
@@ -161,6 +162,7 @@ if (process.env.QUEUE_ENABLED === 'true') {
     StatusModule, // Phase 3: Status/Stories API
     CatalogModule, // Phase 3: Catalog API (WhatsApp Business)
     PluginsApiModule, // Phase 5: Plugins API
+    WebhookReceiverModule,
   ],
 })
 export class AppModule {}
